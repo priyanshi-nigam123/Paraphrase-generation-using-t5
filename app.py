@@ -106,19 +106,18 @@ def generate_paraphrase(
     )
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
-    num_beams = num_return_sequences
-
     with torch.no_grad():
         outputs = model.generate(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
             max_length=MAX_LENGTH + 20,
-            num_beams=num_beams,
+            num_beams=4,
             num_return_sequences=num_return_sequences,
-            num_beam_groups=num_return_sequences,
-            diversity_penalty=diversity_penalty,
             no_repeat_ngram_size=2,
             early_stopping=True,
+            temperature=0.9,
+            do_sample=True,
+            top_p=0.95,
         )
 
     return [tokenizer.decode(o, skip_special_tokens=True) for o in outputs]
@@ -210,4 +209,3 @@ if st.session_state.results:
             )
 else:
     st.info("Enter a sentence above or select an example from the sidebar, then click **Generate** to begin.")
-    st.info("Sentence likho ya sidebar se ek example choose karo, phir **Generate** dabao.")
