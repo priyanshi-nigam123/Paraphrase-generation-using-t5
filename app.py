@@ -2,8 +2,8 @@ import streamlit as st
 import torch
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 
-# ---- Config ----
-MODEL_REPO = "Priyanshii123/paraphrase-t5"  # apna Hugging Face repo id yahan daalo
+# ---- Configuration ----
+MODEL_REPO = "Priyanshii123/paraphrase-t5"
 MAX_LENGTH = 512
 
 st.set_page_config(
@@ -77,6 +77,7 @@ EXAMPLES = [
 
 @st.cache_resource(show_spinner=False)
 def load_model():
+    """Load T5 model and tokenizer from Hugging Face."""
     tokenizer = T5Tokenizer.from_pretrained(MODEL_REPO)
     model = T5ForConditionalGeneration.from_pretrained(MODEL_REPO)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -93,6 +94,7 @@ def generate_paraphrase(
     num_return_sequences=4,
     diversity_penalty=1.5,
 ):
+    """Generate paraphrases for the given input text."""
     processed = "paraphrase: " + input_text
 
     inputs = tokenizer(
@@ -104,7 +106,7 @@ def generate_paraphrase(
     )
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
-    num_beams = num_return_sequences  # must equal num_beam_groups for divisibility
+    num_beams = num_return_sequences
 
     with torch.no_grad():
         outputs = model.generate(
@@ -122,20 +124,20 @@ def generate_paraphrase(
     return [tokenizer.decode(o, skip_special_tokens=True) for o in outputs]
 
 
-# ---- Session state ----
+# ---- Initialize Session State ----
 if "input_text" not in st.session_state:
     st.session_state.input_text = ""
 if "results" not in st.session_state:
     st.session_state.results = None
 
-# ---- Sidebar ----
+# ---- Sidebar Settings ----
 with st.sidebar:
     st.markdown("### ⚙️ Settings")
-    num_paraphrases = st.slider("Number of paraphrases", 2, 6, 4)
-    diversity_penalty = st.slider("Diversity", 0.0, 3.0, 1.5, 0.1)
+    num_paraphrases = st.slider("Number of Paraphrases", 2, 6, 4)
+    diversity_penalty = st.slider("Diversity Level", 0.0, 3.0, 1.5, 0.1)
 
     st.markdown("---")
-    st.markdown("### 💡 Try an example")
+    st.markdown("### 💡 Example Sentences")
     for ex in EXAMPLES:
         if st.button(ex, key=f"ex_{ex}", use_container_width=True):
             st.session_state.input_text = ex
@@ -144,22 +146,22 @@ with st.sidebar:
     st.markdown("---")
     st.caption("Fine-tuned T5 model for English paraphrase generation.")
 
-# ---- Header ----
+# ---- Main Header ----
 st.markdown('<p class="main-header">🔁 Paraphrase Generator</p>', unsafe_allow_html=True)
 st.markdown(
-    '<p class="sub-header">Fine-tuned T5 model se apne sentence ke multiple, natural paraphrases generate karo.</p>',
+    '<p class="sub-header">Generate multiple natural paraphrases for your sentences using a fine-tuned T5 model.</p>',
     unsafe_allow_html=True,
 )
 
-with st.spinner("Model load ho raha hai... (pehli baar thoda time lagega)"):
+with st.spinner("Loading model... (First load may take a moment)"):
     model, tokenizer, device = load_model()
 
-# ---- Input area ----
+# ---- Input Section ----
 left, right = st.columns([3, 1])
 
 with left:
     input_sentence = st.text_area(
-        "Apna sentence likho",
+        "Enter Your Sentence",
         value=st.session_state.input_text,
         placeholder="e.g. The quick brown fox jumps over the lazy dog.",
         height=120,
@@ -178,9 +180,9 @@ if clear_clicked:
 
 if generate_clicked:
     if not input_sentence.strip():
-        st.warning("Pehle koi sentence likho ya example select karo.")
+        st.warning("Please enter a sentence or select an example to begin.")
     else:
-        with st.spinner("Paraphrases generate ho rahe hain..."):
+        with st.spinner("Generating paraphrases..."):
             st.session_state.results = generate_paraphrase(
                 input_sentence,
                 model,
@@ -191,7 +193,7 @@ if generate_clicked:
             )
         st.session_state.input_text = input_sentence
 
-# ---- Results ----
+# ---- Display Results ----
 if st.session_state.results:
     st.markdown("### Results")
     st.markdown(
@@ -207,4 +209,5 @@ if st.session_state.results:
                 unsafe_allow_html=True,
             )
 else:
+    st.info("Enter a sentence above or select an example from the sidebar, then click **Generate** to begin.")
     st.info("Sentence likho ya sidebar se ek example choose karo, phir **Generate** dabao.")
