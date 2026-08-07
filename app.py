@@ -3,7 +3,7 @@ import torch
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 
 # ---- Config ----
-MODEL_REPO = "your-username/paraphrase-t5"  # apna Hugging Face repo id yahan daalo
+MODEL_REPO = "Priyanshii123/paraphrase-t5"  # apna Hugging Face repo id yahan daalo
 MAX_LENGTH = 512
 
 st.set_page_config(
