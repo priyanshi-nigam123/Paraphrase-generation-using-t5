@@ -1,211 +1,204 @@
 import streamlit as st
-import torch
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+import numpy as np
+from PIL import Image
+import tensorflow as tf
+import os
 
-# ---- Configuration ----
-MODEL_REPO = "Priyanshii123/paraphrase-t5"
-MAX_LENGTH = 512
-
+# ============================================================================
+# PAGE CONFIG
+# ============================================================================
 st.set_page_config(
-    page_title="Paraphrase Generator",
-    page_icon="🔁",
+    page_title="Brain Tumor Detection",
+    page_icon="🧠",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
-# ---- Custom CSS ----
-st.markdown(
-    """
+# ============================================================================
+# CUSTOM STYLING
+# ============================================================================
+st.markdown("""
     <style>
     .main-header {
-        font-size: 2.6rem;
-        font-weight: 800;
-        background: linear-gradient(90deg, #6366F1, #EC4899);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0;
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #4F46E5;
+        margin-bottom: 0.2rem;
     }
     .sub-header {
+        font-size: 1rem;
         color: #6B7280;
-        font-size: 1.05rem;
-        margin-top: 0;
         margin-bottom: 1.5rem;
     }
-    .paraphrase-card {
-        background: #F9FAFB;
+    .result-card {
+        padding: 1.5rem;
+        border-radius: 12px;
+        background-color: #F9FAFB;
         border: 1px solid #E5E7EB;
-        border-left: 4px solid #6366F1;
-        border-radius: 10px;
-        padding: 1rem 1.2rem;
-        margin-bottom: 0.8rem;
-        font-size: 1.02rem;
-        line-height: 1.5;
+        border-left: 4px solid #4F46E5;
+        margin-top: 1rem;
     }
-    .original-card {
-        background: #EEF2FF;
-        border: 1px solid #C7D2FE;
-        border-radius: 10px;
-        padding: 1rem 1.2rem;
-        margin-bottom: 1.2rem;
-        font-size: 1.05rem;
+    .prediction-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #111827;
+    }
+    .confidence-text {
+        font-size: 1rem;
+        color: #4F46E5;
+        font-weight: 600;
     }
     .stButton>button {
-        background: linear-gradient(90deg, #6366F1, #8B5CF6);
+        background-color: #4F46E5;
         color: white;
-        border: none;
         border-radius: 8px;
-        padding: 0.6rem 1.4rem;
+        padding: 0.5rem 1.5rem;
         font-weight: 600;
-        width: 100%;
+        border: none;
     }
     .stButton>button:hover {
-        opacity: 0.9;
+        background-color: #4338CA;
+        color: white;
     }
-    footer {visibility: hidden;}
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-EXAMPLES = [
-    "The quick brown fox jumps over the lazy dog.",
-    "She enjoys reading books on rainy afternoons.",
-    "Climate change is one of the most pressing issues of our time.",
-    "The company announced record profits this quarter.",
-]
+# ============================================================================
+# CONFIG
+# ============================================================================
+from huggingface_hub import hf_hub_download
 
+HF_REPO_ID = "Priyanshii123/Brain_Tumor_Detection"
+HF_MODEL_FILENAME = "brain_tumor_efficientnet_model.keras"
+IMAGE_SIZE = 224
+CLASS_NAMES = ["glioma", "meningioma", "notumor", "pituitary"]
 
-@st.cache_resource(show_spinner=False)
+CLASS_INFO = {
+    "glioma": "A tumor that arises from glial cells in the brain or spine.",
+    "meningioma": "A tumor that forms on membranes covering the brain and spinal cord.",
+    "notumor": "No tumor detected in the scan.",
+    "pituitary": "A tumor that forms in the pituitary gland."
+}
+
+EXAMPLE_DIR = "example_images"
+
+# ============================================================================
+# LOAD MODEL (cached so it only loads once)
+# ============================================================================
+@st.cache_resource
 def load_model():
-    """Load T5 model and tokenizer from Hugging Face."""
-    tokenizer = T5Tokenizer.from_pretrained(MODEL_REPO)
-    model = T5ForConditionalGeneration.from_pretrained(MODEL_REPO)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    model.eval()
-    return model, tokenizer, device
+    model_path = hf_hub_download(repo_id=HF_REPO_ID, filename=HF_MODEL_FILENAME)
+    model = tf.keras.models.load_model(model_path)
+    return model
 
+def preprocess_image(image: Image.Image):
+    """Preprocess image for model prediction"""
+    image = image.convert("RGB")
+    image = image.resize((IMAGE_SIZE, IMAGE_SIZE))
+    img_array = np.array(image) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+    return img_array
 
-def generate_paraphrase(
-    input_text,
-    model,
-    tokenizer,
-    device,
-    num_return_sequences=4,
-    diversity_penalty=1.5,
-):
-    """Generate paraphrases for the given input text."""
-    processed = "paraphrase: " + input_text
+def predict(model, image: Image.Image):
+    """Make prediction on image"""
+    img_array = preprocess_image(image)
+    preds = model.predict(img_array, verbose=0)[0]
+    pred_idx = int(np.argmax(preds))
+    return CLASS_NAMES[pred_idx], preds
 
-    inputs = tokenizer(
-        processed,
-        return_tensors="pt",
-        truncation=True,
-        max_length=MAX_LENGTH,
-        padding="max_length",
-    )
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    with torch.no_grad():
-        outputs = model.generate(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-            max_length=MAX_LENGTH + 20,
-            num_beams=4,
-            num_return_sequences=num_return_sequences,
-            no_repeat_ngram_size=2,
-            early_stopping=True,
-            temperature=0.9,
-            do_sample=True,
-            top_p=0.95,
-        )
-
-    return [tokenizer.decode(o, skip_special_tokens=True) for o in outputs]
-
-
-# ---- Initialize Session State ----
-if "input_text" not in st.session_state:
-    st.session_state.input_text = ""
-if "results" not in st.session_state:
-    st.session_state.results = None
-
-# ---- Sidebar Settings ----
+# ============================================================================
+# SIDEBAR
+# ============================================================================
 with st.sidebar:
-    st.markdown("### ⚙️ Settings")
-    num_paraphrases = st.slider("Number of Paraphrases", 2, 6, 4)
-    diversity_penalty = st.slider("Diversity Level", 0.0, 3.0, 1.5, 0.1)
+    st.markdown("### 🧠 About")
+    st.write(
+        "This app classifies brain MRI scans into four categories using a "
+        "fine-tuned **EfficientNetB0** model."
+    )
+    st.markdown("---")
+
+    st.markdown("### 📊 Classes")
+    for cname, desc in CLASS_INFO.items():
+        st.markdown(f"**{cname.capitalize()}** — {desc}")
 
     st.markdown("---")
-    st.markdown("### 💡 Example Sentences")
-    for ex in EXAMPLES:
-        if st.button(ex, key=f"ex_{ex}", use_container_width=True):
-            st.session_state.input_text = ex
-            st.session_state.results = None
+    st.markdown("### 🖼️ Try an Example")
+    st.caption("Click a thumbnail to test the model without uploading your own image.")
 
-    st.markdown("---")
-    st.caption("Fine-tuned T5 model for English paraphrase generation.")
+    selected_example = None
+    for cname in CLASS_NAMES:
+        class_dir = os.path.join(EXAMPLE_DIR, cname)
+        if os.path.isdir(class_dir):
+            files = sorted(os.listdir(class_dir))[:5]
+            if files:
+                st.markdown(f"**{cname.capitalize()}**")
+                cols = st.columns(5)
+                for i, fname in enumerate(files):
+                    fpath = os.path.join(class_dir, fname)
+                    with cols[i]:
+                        if st.button("▫", key=f"{cname}_{i}", help=fname):
+                            selected_example = fpath
+                        st.image(fpath, use_container_width=True)
 
-# ---- Main Header ----
-st.markdown('<p class="main-header">🔁 Paraphrase Generator</p>', unsafe_allow_html=True)
+# ============================================================================
+# MAIN AREA
+# ============================================================================
+st.markdown('<div class="main-header">🧠 Brain Tumor Detection</div>', unsafe_allow_html=True)
 st.markdown(
-    '<p class="sub-header">Generate multiple natural paraphrases for your sentences using a fine-tuned T5 model.</p>',
-    unsafe_allow_html=True,
+    '<div class="sub-header">Upload a brain MRI scan or pick an example from the '
+    'sidebar to classify it as Glioma, Meningioma, Pituitary tumor, or No tumor.</div>',
+    unsafe_allow_html=True
 )
 
-with st.spinner("Loading model... (First load may take a moment)"):
-    model, tokenizer, device = load_model()
+col1, col2 = st.columns([1, 1], gap="large")
 
-# ---- Input Section ----
-left, right = st.columns([3, 1])
+image_to_predict = None
 
-with left:
-    input_sentence = st.text_area(
-        "Enter Your Sentence",
-        value=st.session_state.input_text,
-        placeholder="e.g. The quick brown fox jumps over the lazy dog.",
-        height=120,
-        label_visibility="collapsed",
+with col1:
+    st.markdown("#### Upload MRI Scan")
+    uploaded_file = st.file_uploader(
+        "Choose an image (JPG, PNG)",
+        type=["jpg", "jpeg", "png"],
+        label_visibility="collapsed"
     )
-with right:
-    st.write("")
-    st.write("")
-    generate_clicked = st.button("✨ Generate", use_container_width=True)
-    clear_clicked = st.button("Clear", use_container_width=True)
+    if uploaded_file is not None:
+        image_to_predict = Image.open(uploaded_file)
+    elif selected_example is not None:
+        image_to_predict = Image.open(selected_example)
 
-if clear_clicked:
-    st.session_state.input_text = ""
-    st.session_state.results = None
-    st.rerun()
-
-if generate_clicked:
-    if not input_sentence.strip():
-        st.warning("Please enter a sentence or select an example to begin.")
+    if image_to_predict is not None:
+        st.image(image_to_predict, caption="Selected Scan", use_container_width=True)
+        run = st.button("✨ Analyze Scan", use_container_width=True)
     else:
-        with st.spinner("Generating paraphrases..."):
-            st.session_state.results = generate_paraphrase(
-                input_sentence,
-                model,
-                tokenizer,
-                device,
-                num_return_sequences=num_paraphrases,
-                diversity_penalty=diversity_penalty,
-            )
-        st.session_state.input_text = input_sentence
+        st.info("Upload an image above or select an example from the sidebar to begin.")
+        run = False
 
-# ---- Display Results ----
-if st.session_state.results:
-    st.markdown("### Results")
-    st.markdown(
-        f'<div class="original-card">📌 <b>Original:</b> {st.session_state.input_text}</div>',
-        unsafe_allow_html=True,
-    )
+with col2:
+    st.markdown("#### Results")
+    if image_to_predict is not None and run:
+        with st.spinner("Analyzing scan..."):
+            model = load_model()
+            pred_class, probs = predict(model, image_to_predict)
+            confidence = float(np.max(probs)) * 100
 
-    cols = st.columns(2)
-    for i, para in enumerate(st.session_state.results, 1):
-        with cols[(i - 1) % 2]:
-            st.markdown(
-                f'<div class="paraphrase-card"><b>#{i}</b><br>{para}</div>',
-                unsafe_allow_html=True,
-            )
-else:
-    st.info("Enter a sentence above or select an example from the sidebar, then click **Generate** to begin.")
+        st.markdown(f"""
+            <div class="result-card">
+                <div class="prediction-title">{pred_class.capitalize()}</div>
+                <div class="confidence-text">Confidence: {confidence:.2f}%</div>
+                <p style="margin-top:0.5rem; color:#4B5563;">{CLASS_INFO[pred_class]}</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("##### Confidence by Class")
+        for cname, p in zip(CLASS_NAMES, probs):
+            st.write(f"{cname.capitalize()}")
+            st.progress(float(p))
+            st.caption(f"{p*100:.2f}%")
+    else:
+        st.write("Prediction results will appear here after you analyze a scan.")
+
+st.markdown("---")
+st.caption(
+    "⚠️ This tool is for educational/demonstration purposes only and is not a "
+    "substitute for professional medical diagnosis."
+)
