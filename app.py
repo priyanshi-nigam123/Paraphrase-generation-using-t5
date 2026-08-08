@@ -82,21 +82,21 @@ def generate_paraphrase(input_text, model, tokenizer, device, num_return_sequenc
     processed = "paraphrase: " + input_text
     inputs = tokenizer(processed, return_tensors="pt", truncation=True, max_length=MAX_LENGTH, padding="max_length")
     inputs = {k: v.to(device) for k, v in inputs.items()}
-    num_beams = num_return_sequences
+    
     with torch.no_grad():
         outputs = model.generate(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
             max_length=MAX_LENGTH + 20,
-            num_beams=num_beams,
+            num_beams=4,
             num_return_sequences=num_return_sequences,
-            num_beam_groups=num_return_sequences,
-            diversity_penalty=diversity_penalty,
             no_repeat_ngram_size=2,
             early_stopping=True,
+            temperature=0.9,
+            do_sample=True,
+            top_p=0.95,
         )
     return [tokenizer.decode(o, skip_special_tokens=True) for o in outputs]
-
 if "input_text" not in st.session_state:
     st.session_state.input_text = ""
 if "results" not in st.session_state:
